@@ -1,67 +1,77 @@
-#include <errno.h>
-#include <stdio.h>      // For input/output (printf, etc.)
-#include <stdlib.h>     // For general utilities (exit, malloc)
-#include <string.h>     // For string operations (memset, strlen)
-#include <unistd.h>     // For close() and other POSIX functions
-#include <sys/types.h>  // For data types used in sockets
-#include <sys/socket.h> // For socket(), bind(), listen(), accept()
-#include <netinet/in.h> // For sockaddr_in structure (internet addresses)
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/select.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 int main() {
-	// creating a new socket
-	// - AF_INET -> IPv4
-	// - SOCK_STREAM -> data transfer type (TCP)
-	// - 0 -> default protocol (TCP for SOCK_STREAM)
-	int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+	int listener_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	if (server_socket_fd < 0) {
+	if (listener_socket_fd < 0) {
 		perror("Error creating socket");
 		exit(EXIT_FAILURE);
 	}
 
-	// creating a sockaddr_in structure for the ip and port information for the SERVER
-	struct sockaddr_in server_address;
-	server_address.sin_family = AF_INET;          // IPv4
-	server_address.sin_addr.s_addr = INADDR_ANY;  // Listen on any IP
-	server_address.sin_port = htons(8080);        // Port 8080 (network byte order)
+	struct sockaddr_in listener_address;
+	listener_address.sin_family = AF_INET;
+	listener_address.sin_addr.s_addr = INADDR_ANY;
+	listener_address.sin_port = htons(8080);
 
-	// binding the socket to the IP address and port
-	int server_bind_success = bind(server_socket_fd, (struct sockaddr *)&server_address, sizeof(server_address));
+	int listener_bind_success = bind(listener_socket_fd, (struct sockaddr *)&listener_address, sizeof(listener_address));
 
-	if (server_bind_success < 0) {
+	if (listener_bind_success < 0) {
 		perror("Error binding socket");
-		close(server_socket_fd);
+		close(listener_socket_fd);
 		exit(EXIT_FAILURE);
 	}
 
-	// making the socket listen for incoming connections
-	listen(server_socket_fd, 5);
-
-
-	// creating a sockaddr_in structure for the ip and port information for the CLIENT
-	struct sockaddr_in client_address;
-	socklen_t addr_len = sizeof(client_address);
-
-	int client_socket_fd = accept(server_socket_fd, (struct sockaddr *)&client_address, &addr_len);
+	fd_set fds_to_read, fds_to_write, read_fds, write_fds;
+	FD_ZERO(&fds_to_read);
+	FD_ZERO(&fds_to_write);
+	FD_SET(listener_socket_fd, &fds_to_read);
+	listen(listener_socket_fd, 5);
+	int maxfd = listener_socket_fd;
 
 	while(1) {
-		char buffer[1024];
-		ssize_t bytes_recived = recv(client_socket_fd, &buffer, sizeof(buffer) - 1, 0);
+		read_fds = fds_to_read;
+		write_fds = fds_to_write;
 
-		if (bytes_recived == 0) {
-			printf("Session closed.\n");
+		int activity = select(maxfd+1, &read_fds, &write_fds, NULL, NULL);
+		if (activity < 0) {
+			perror("select error");
 			break;
 		}
 
-		buffer[bytes_recived] = '\0';
-
-		char response[1024] = "You sent: ";
-		strcat(response, buffer);
-
-		printf("Client sent: %s\n", buffer);
-		send(client_socket_fd, response, strlen(response), 0);
+		for (int i = 0; i <= maxfd; i++) {
+			if (FD_ISSET(i, &read_fds)) {
+				if(i == listener_socket_fd) {
+					struct sockaddr_in client_address;
+					socklen_t len = sizeof(client_address);
+					int new_fd = accept(listener_socket_fd, (struct sockaddr *)&client_address, &len);
+					FD_SET(new_fd, &fds_to_read);
+					if (new_fd > maxfd) maxfd = new_fd;
+				} else {
+					char buffer[1024];
+					int bytes = recv(i, &buffer, sizeof(buffer) - 1, 0);
+					if (bytes > 0) {
+						buffer[bytes] = '\0';
+						printf("[%i]: %s\n", i, buffer);
+						FD_SET(i, &fds_to_write);
+					} else if (bytes == 0) {
+						printf("[%i]: disconnected\n", i);
+					}
+					FD_CLR(i, &fds_to_read);
+				}			
+			}
+			if (i != listener_socket_fd && FD_ISSET(i, &write_fds)) {
+				char response[] = "Got your message...\n";
+				send(i, &response, sizeof(response), 0);
+				FD_CLR(i, &fds_to_write);
+				FD_SET(i, &fds_to_read);
+			}
+		}
 	}
-
-	close(client_socket_fd);
-	close(server_socket_fd);
 }
