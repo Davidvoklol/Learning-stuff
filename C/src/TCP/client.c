@@ -1,13 +1,8 @@
-#include <errno.h>
-#include <stdio.h>      // For input/output (printf, etc.)
-#include <stdlib.h>     // For general utilities (exit, malloc)
-#include <string.h>     // For string operations (memset, strlen)
-#include <unistd.h>     // For close() and other POSIX functions
-#include <sys/types.h>  // For data types used in sockets
-#include <sys/socket.h> // For socket(), bind(), listen(), accept()
-#include <netinet/in.h> // For sockaddr_in structure (internet addresses)
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <arpa/inet.h>
-
 
 int main() {
 	int client_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
