@@ -8,4 +8,5 @@ tcp: ./src/TCP/server.c ./src/TCP/client.c
 	gcc -o ./build/client ./src/TCP/client.c
 
 clear: ./build/
-	rm -r ./build/*
+	rm -f ./build/*
+	touch ./build/.gitignore
