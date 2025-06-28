@@ -57,6 +57,7 @@ int main() {
 						printf("[%i]: %s\n", i, buffer);
 						FD_SET(i, &fds_to_write);
 					} else if (bytes == 0) {
+						close(i);
 						printf("[%i]: disconnected\n", i);
 					}
 					FD_CLR(i, &fds_to_read);
