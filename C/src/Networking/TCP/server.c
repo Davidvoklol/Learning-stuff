@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include "../networking.c"
 
 int main() {
 	int listener_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -27,6 +29,7 @@ int main() {
 	fd_set fds_to_read, fds_to_write, read_fds, write_fds;
 	FD_ZERO(&fds_to_read);
 	FD_ZERO(&fds_to_write);
+
 	FD_SET(listener_socket_fd, &fds_to_read);
 	listen(listener_socket_fd, 5);
 	int maxfd = listener_socket_fd;
@@ -37,7 +40,7 @@ int main() {
 
 		int activity = select(maxfd+1, &read_fds, &write_fds, NULL, NULL);
 		if (activity < 0) {
-			perror("select error");
+			perror("Select error");
 			break;
 		}
 
@@ -47,6 +50,9 @@ int main() {
 					struct sockaddr_in client_address;
 					socklen_t len = sizeof(client_address);
 					int new_fd = accept(listener_socket_fd, (struct sockaddr *)&client_address, &len);
+
+					display_socket_info(new_fd);
+					printf(" --> connected\n");
 					FD_SET(new_fd, &fds_to_read);
 					if (new_fd > maxfd) maxfd = new_fd;
 				} else {
@@ -54,17 +60,20 @@ int main() {
 					int bytes = recv(i, &buffer, sizeof(buffer) - 1, 0);
 					if (bytes > 0) {
 						buffer[bytes] = '\0';
-						printf("[%i]: %s\n", i, buffer);
+
+						display_socket_info(i);
+						printf(" %s\n", buffer);
 						FD_SET(i, &fds_to_write);
 					} else if (bytes == 0) {
+						display_socket_info(i);
+						printf(" --> disconnected\n");
 						close(i);
-						printf("[%i]: disconnected\n", i);
 					}
 					FD_CLR(i, &fds_to_read);
 				}			
 			}
-			if (i != listener_socket_fd && FD_ISSET(i, &write_fds)) {
-				char response[] = "Got your message...\n";
+			if (FD_ISSET(i, &write_fds) && i != listener_socket_fd) {
+				char response[] = "Got your message...";
 				send(i, &response, sizeof(response), 0);
 				FD_CLR(i, &fds_to_write);
 				FD_SET(i, &fds_to_read);
